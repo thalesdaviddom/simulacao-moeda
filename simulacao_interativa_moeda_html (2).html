@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulação de Moeda — Ensaio com Probabilidade Ajustável</title>
+  <style>
+    :root{
+      --bg:#0b1020; --panel:#111831; --muted:#a6b0d8; --text:#e9edff; --accent:#7aa2ff; --accent-2:#66d9a3; --danger:#ff6b6b;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Inter,Arial,sans-serif;background:linear-gradient(180deg,#0b1020 0%,#0b0f19 100%);color:var(--text)}
+    .wrap{max-width:960px;margin:0 auto;padding:24px}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{font-size:clamp(20px,3vw,28px);margin:0;font-weight:700;letter-spacing:.2px}
+    .card{background:var(--panel);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:18px;box-shadow:0 6px 30px rgba(0,0,0,.35)}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    @media(min-width:880px){.grid{grid-template-columns:380px 1fr}}
+
+    /* Coin */
+    .stage{display:flex;align-items:center;justify-content:center;min-height:260px;position:relative}
+    .coin{width:140px;height:140px;border-radius:50%;display:grid;place-items:center;perspective:800px;background:radial-gradient(circle at 30% 30%, #ffeab3, #cda54a 60%, #a57e2b 100%);
+      box-shadow:0 10px 28px rgba(0,0,0,.45), inset 0 0 8px rgba(0,0,0,.25); border:3px solid rgba(255,255,255,.35)}
+    .coin-face{font-weight:800;font-size:56px;color:#2b1e05; text-shadow:0 2px 0 rgba(255,255,255,.35)}
+    .flip{animation:flip 700ms ease-in-out}
+    @keyframes flip{0%{transform:rotateY(0deg)} 50%{transform:rotateY(540deg)} 100%{transform:rotateY(720deg)}}
+
+    /* Controls */
+    .controls{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+    .btn{appearance:none;border:none;cursor:pointer;border-radius:12px;padding:12px 16px;font-weight:700;letter-spacing:.2px;transition:.18s transform, .18s opacity, .18s background;
+      color:#0c1020}
+    .btn:active{transform:translateY(1px)}
+    .btn-primary{background:var(--accent)}
+    .btn-danger{background:var(--danger)}
+    .btn-ghost{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,.12)}
+    label{font-size:14px;color:var(--muted)}
+    .prob{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+    input[type="range"]{width:min(54vw,380px)}
+    .pill{background:rgba(122,162,255,.18); color:var(--accent);border:1px solid rgba(122,162,255,.45); padding:6px 10px;border-radius:999px;font-weight:700}
+
+    /* Stats */
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .stat{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px}
+    .stat h3{margin:0 0 6px 0;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.12em}
+    .stat p{margin:0;font-size:22px;font-weight:800}
+    footer{margin-top:14px;color:var(--muted);font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Simulação Interativa — Moeda (Cara/Coroa)</h1>
+      <button class="btn btn-ghost" id="btn-help" title="Dica">?</button>
+    </header>
+
+    <div class="grid">
+      <!-- Painel Esquerdo: Moeda + Controles -->
+      <section class="card">
+        <div class="stage">
+          <div class="coin" id="coin">
+            <div class="coin-face" id="coinFace">?</div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button class="btn btn-primary" id="btn-ensaio">Ensaio</button>
+          <button class="btn btn-danger" id="btn-zerar">Zerar</button>
+          <div class="prob">
+            <label for="pRange">Probabilidade de <b>cara</b>:</label>
+            <input type="range" id="pRange" min="0" max="100" value="50" step="1" />
+            <span class="pill" id="pLabel">p = 0.50</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Painel Direito: Estatísticas -->
+      <section class="card">
+        <div class="stats">
+          <div class="stat">
+            <h3>Caras</h3>
+            <p id="heads">0</p>
+          </div>
+          <div class="stat">
+            <h3>Ensaios</h3>
+            <p id="trials">0</p>
+          </div>
+          <div class="stat">
+            <h3>Proporção (caras/ensaios)</h3>
+            <p id="prop">0.00</p>
+          </div>
+        </div>
+        <footer id="footerNote">Clique em <b>Ensaio</b> para lançar. Ajuste <b>p</b> para alterar a chance de cara.</footer>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const coin = document.getElementById('coin');
+      const face = document.getElementById('coinFace');
+      const btnFlip = document.getElementById('btn-ensaio');
+      const btnReset = document.getElementById('btn-zerar');
+      const pRange = document.getElementById('pRange');
+      const pLabel = document.getElementById('pLabel');
+
+      const elHeads = document.getElementById('heads');
+      const elTrials = document.getElementById('trials');
+      const elProp = document.getElementById('prop');
+
+      let p = 0.5; // probabilidade de cara
+      let heads = 0; let trials = 0;
+      let animating = false;
+
+      function updatePLabel(){
+        p = Number(pRange.value)/100;
+        pLabel.textContent = `p = ${p.toFixed(2)}`;
+      }
+      updatePLabel();
+
+      function updateStats(){
+        elHeads.textContent = heads;
+        elTrials.textContent = trials;
+        elProp.textContent = trials ? (heads/trials).toFixed(4) : '0.00';
+      }
+
+      function flipOnce(){
+        if(animating) return; // evita cliques repetidos durante a animação
+        animating = true;
+        coin.classList.remove('flip');
+        // força reflow para reiniciar a animação
+        void coin.offsetWidth;
+        coin.classList.add('flip');
+
+        // Decide o resultado ao fim da animação (~700ms)
+        setTimeout(() => {
+          const r = Math.random();
+          const isHead = r < p;
+          face.textContent = isHead ? 'C' : 'K';
+          trials += 1; if(isHead) heads += 1;
+          updateStats();
+          animating = false;
+        }, 680);
+      }
+
+      function resetAll(){
+        heads = 0; trials = 0; face.textContent = '?';
+        updateStats();
+      }
+
+      pRange.addEventListener('input', updatePLabel);
+      btnFlip.addEventListener('click', flipOnce);
+      btnReset.addEventListener('click', resetAll);
+
+      // Teclado: Enter para ensaio, R para reset
+      document.addEventListener('keydown', (e)=>{
+        if(e.key === 'Enter') flipOnce();
+        if(e.key.toLowerCase() === 'r') resetAll();
+      });
+
+      // Ajuda
+      document.getElementById('btn-help').addEventListener('click', () => {
+        alert('Use o slider para ajustar p (probabilidade de cara).\nClique em Ensaio para lançar a moeda.\nZerar reinicia contagem.\nAtalhos: Enter (Ensaio), R (Zerar).');
+      });
+
+      updateStats();
+    })();
+  </script>
+</body>
+</html>
